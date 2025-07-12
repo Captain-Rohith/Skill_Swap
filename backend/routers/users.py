@@ -11,6 +11,16 @@ from models.user import User
 
 router = APIRouter(prefix="/users", tags=["users"])
 
+@router.get("/{user_id}/ratings", response_model=dict)
+def get_user_ratings(
+    user_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get user's ratings and feedback"""
+    from services.swap_service import SwapService
+    ratings = SwapService.get_user_ratings(db, user_id)
+    return ratings
+
 @router.post("/profile", response_model=UserResponse)
 def create_or_update_profile(
     user_data: UserCreate,
@@ -52,20 +62,27 @@ def update_profile(
     print(f"Updated user: {user.name}, skills_offered: {user.skills_offered}, skills_wanted: {user.skills_wanted}")
     return user
 
-@router.get("/search", response_model=List[UserPublicResponse])
+@router.get("/search", response_model=List[dict])
 def search_users(
-    skill: str = None,
+    skill: str | None = None,
     current_user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-    """Search public users by skill or get all public users"""
+    """Search public users by skill or get all public users with ratings"""
     if skill:
-        users = UserService.search_users_by_skill(db, skill)
+        # For skill-based search, we'll need to implement a different approach
+        # For now, get all users and filter by skill
+        users = UserService.get_all_public_users_with_ratings(db, exclude_user_id=None)
+        # Filter by skill
+        filtered_users = []
+        for user in users:
+            if (skill.lower() in [s.lower() for s in user.get('skills_offered', [])] or
+                skill.lower() in [s.lower() for s in user.get('skills_wanted', [])]):
+                filtered_users.append(user)
+        return filtered_users
     else:
-        # Include all public users (including current user for testing)
-        users = UserService.get_all_public_users(db, exclude_user_id=None)
-    
-    return [UserPublicResponse.from_orm(user) for user in users]
+        # Include all public users with ratings
+        return UserService.get_all_public_users_with_ratings(db, exclude_user_id=None)
 
 @router.get("/debug-token")
 def debug_token(

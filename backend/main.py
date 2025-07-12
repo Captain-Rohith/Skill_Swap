@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 
 from config import get_settings
 from db.database import create_tables
-from routers import users, swaps, admin
+from routers import users, swaps, admin, notifications
 
 settings = get_settings()
 
@@ -36,6 +36,7 @@ app.add_middleware(
 app.include_router(users.router, prefix="/api")
 app.include_router(swaps.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+app.include_router(notifications.router, prefix="/api")
 
 @app.get("/")
 async def root():

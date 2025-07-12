@@ -1,6 +1,6 @@
 
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from models.swap import SwapStatus
 
@@ -47,3 +47,25 @@ class FeedbackResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+class ChatMessageBase(BaseModel):
+    message: str
+
+class ChatMessageCreate(ChatMessageBase):
+    pass
+
+class ChatMessageResponse(BaseModel):
+    id: str
+    swap_request_id: str
+    from_user_id: str
+    from_user_name: str
+    message: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class UserRatingResponse(BaseModel):
+    average_rating: float
+    total_ratings: int
+    feedback: List[FeedbackResponse]

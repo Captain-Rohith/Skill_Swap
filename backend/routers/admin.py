@@ -49,4 +49,52 @@ def get_all_swaps(
     """Get all swap requests (admin only)"""
     from services.swap_service import SwapService
     swaps = SwapService.get_all_swaps(db)
-    return swaps
+    
+    result = []
+    for swap in swaps:
+        from_user = db.query(User).filter(User.id == swap.from_user_id).first()
+        to_user = db.query(User).filter(User.id == swap.to_user_id).first()
+        
+        result.append({
+            "id": swap.id,
+            "from_user_id": swap.from_user_id,
+            "to_user_id": swap.to_user_id,
+            "from_user_name": from_user.name if from_user else "Unknown",
+            "to_user_name": to_user.name if to_user else "Unknown",
+            "skill_offered": swap.skill_offered,
+            "skill_wanted": swap.skill_wanted,
+            "message": swap.message,
+            "status": swap.status,
+            "created_at": swap.created_at,
+            "updated_at": swap.updated_at,
+            "closed_count": swap.closed_count
+        })
+    
+    return result
+
+@router.post("/platform-message", response_model=dict)
+def send_platform_message(
+    message_data: dict,
+    admin_user: User = Depends(verify_admin),
+    db: Session = Depends(get_db)
+):
+    """Send a platform-wide message to all users"""
+    from services.notification_service import NotificationService
+    
+    message = message_data.get("message", "").strip()
+    if not message:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Message cannot be empty"
+        )
+    
+    platform_message = NotificationService.send_platform_message(
+        db, admin_user.id, admin_user.name, message
+    )
+    
+    return {
+        "id": platform_message.id,
+        "message": platform_message.message,
+        "admin_name": platform_message.admin_name,
+        "created_at": platform_message.created_at.isoformat() if platform_message.created_at else None
+    }

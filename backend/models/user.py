@@ -14,6 +14,8 @@ class User(Base):
     skills_offered = Column(ARRAY(String), default=[])
     skills_wanted = Column(ARRAY(String), default=[])
     availability = Column(String, nullable=True)
+    phone_number = Column(String(20), nullable=True)
+    email = Column(String(255), nullable=True)
     is_public = Column(Boolean, default=True)
     is_active = Column(Boolean, default=True)
     is_banned = Column(Boolean, default=False)

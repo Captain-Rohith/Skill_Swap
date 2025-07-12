@@ -67,6 +67,39 @@ class UserService:
         return query.all()
 
     @staticmethod
+    def get_all_public_users_with_ratings(db: Session, exclude_user_id: Optional[str] = None) -> List[dict]:
+        """Get all public, active, non-banned users with their rating information"""
+        from services.swap_service import SwapService
+        
+        users = UserService.get_all_public_users(db, exclude_user_id)
+        result = []
+        
+        for user in users:
+            # Get user's rating information
+            rating_info = SwapService.get_user_ratings(db, user.id)
+            
+            # Convert user to dict and add rating info
+            user_dict = {
+                "id": user.id,
+                "name": user.name,
+                "email": user.email,
+                "location": user.location,
+                "profile_picture": user.profile_picture,
+                "skills_offered": user.skills_offered,
+                "skills_wanted": user.skills_wanted,
+                "availability": user.availability,
+                "is_public": user.is_public,
+                "is_active": user.is_active,
+                "is_banned": user.is_banned,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "average_rating": rating_info["average_rating"],
+                "total_ratings": rating_info["total_ratings"]
+            }
+            result.append(user_dict)
+        
+        return result
+
+    @staticmethod
     def get_all_users(db: Session) -> List[User]:
         """Get all users (admin only)"""
         return db.query(User).all()
@@ -105,10 +138,15 @@ class UserService:
         if clerk_user_data.get('email_addresses'):
             email = clerk_user_data['email_addresses'][0].get('email_address', '')
         
+        phone_number = ''
+        if clerk_user_data.get('phone_numbers'):
+            phone_number = clerk_user_data['phone_numbers'][0].get('phone_number', '')
+        
         if existing_user:
             # Update existing user with latest Clerk data
             existing_user.name = name
             existing_user.email = email
+            existing_user.phone_number = phone_number
             db.commit()
             db.refresh(existing_user)
             return existing_user

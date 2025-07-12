@@ -11,6 +11,7 @@ class UserBase(BaseModel):
     skills_offered: List[str] = []
     skills_wanted: List[str] = []
     availability: Optional[str] = None
+    phone_number: Optional[str] = None
     is_public: bool = True
 
 class UserCreate(UserBase):
@@ -23,6 +24,8 @@ class UserUpdate(BaseModel):
     skills_offered: Optional[List[str]] = None
     skills_wanted: Optional[List[str]] = None
     availability: Optional[str] = None
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
     is_public: Optional[bool] = None
 
 class UserResponse(UserBase):

@@ -6,7 +6,8 @@ from typing import List
 from db.database import get_db
 from utils.auth_utils import get_current_user_id
 from services.swap_service import SwapService
-from schemas.swap import SwapRequestCreate, SwapRequestResponse, FeedbackCreate, FeedbackResponse
+from schemas.swap import SwapRequestCreate, SwapRequestResponse, FeedbackCreate, FeedbackResponse, ChatMessageCreate
+from models.user import User
 
 router = APIRouter(prefix="/swaps", tags=["swaps"])
 
@@ -71,8 +72,8 @@ def delete_swap(
     current_user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-    """Delete a swap request (only by owner)"""
-    success = SwapService.delete_swap(db, swap_id, current_user_id)
+    """Delete a swap request (only by participants)"""
+    success = SwapService.delete_swap_by_user(db, swap_id, current_user_id)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -113,3 +114,70 @@ def get_swap_feedback(
     
     feedback = SwapService.get_swap_feedback(db, swap_id)
     return feedback
+
+@router.patch("/{swap_id}/close", response_model=SwapRequestResponse)
+def close_swap(
+    swap_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Close a completed swap"""
+    swap = SwapService.close_swap(db, swap_id, current_user_id)
+    if not swap:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Swap not found, not authorized, or not in accepted status"
+        )
+    return swap
+
+@router.post("/{swap_id}/chat", response_model=dict)
+def create_chat_message(
+    swap_id: str,
+    message_data: ChatMessageCreate,
+    current_user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Send a chat message for a swap"""
+    from schemas.swap import ChatMessageResponse
+    
+    chat_message = SwapService.create_chat_message(db, swap_id, message_data, current_user_id)
+    if not chat_message:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Swap not found or not authorized"
+        )
+    
+    # Get user name for response
+    user = db.query(User).filter(User.id == current_user_id).first()
+    return {
+        "id": chat_message.id,
+        "swap_request_id": chat_message.swap_request_id,
+        "from_user_id": chat_message.from_user_id,
+        "from_user_name": user.name if user else "Unknown",
+        "message": chat_message.message,
+        "created_at": chat_message.created_at
+    }
+
+@router.get("/{swap_id}/chat", response_model=List[dict])
+def get_chat_messages(
+    swap_id: str,
+    current_user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Get chat messages for a swap"""
+    messages = SwapService.get_chat_messages(db, swap_id, current_user_id)
+    
+    # Add user names to messages
+    result = []
+    for message in messages:
+        user = db.query(User).filter(User.id == message.from_user_id).first()
+        result.append({
+            "id": message.id,
+            "swap_request_id": message.swap_request_id,
+            "from_user_id": message.from_user_id,
+            "from_user_name": user.name if user else "Unknown",
+            "message": message.message,
+            "created_at": message.created_at
+        })
+    
+    return result
