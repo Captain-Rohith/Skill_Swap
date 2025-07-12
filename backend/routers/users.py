@@ -1,176 +1,162 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
-from typing import List, Optional
-from database import get_db
-from models import User, UserSkill, Skill
-from schemas import (
-    UserCreate, UserUpdate, UserResponse, UserSearchParams,
-    UserListResponse, SingleUserResponse, BaseResponse
-)
-from utils.auth import get_current_user, get_current_user_optional
+from typing import List
 
-router = APIRouter(prefix="/api/users", tags=["users"])
+from db.database import get_db
+from utils.auth_utils import get_current_user_id, get_current_user, get_current_user_data
+from services.user_service import UserService
+from schemas.user import UserCreate, UserUpdate, UserResponse, UserPublicResponse
+from models.user import User
 
-@router.post("/", response_model=SingleUserResponse, status_code=status.HTTP_201_CREATED)
-async def create_user(
+router = APIRouter(prefix="/users", tags=["users"])
+
+@router.post("/profile", response_model=UserResponse)
+def create_or_update_profile(
     user_data: UserCreate,
+    current_user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-    """Create a new user profile"""
-    try:
-        # Check if user already exists
-        existing_user = db.query(User).filter(User.clerk_user_id == user_data.clerk_user_id).first()
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="User already exists"
-            )
-        
-        # Check if email is already taken
-        existing_email = db.query(User).filter(User.email == user_data.email).first()
-        if existing_email:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
-            )
-        
+    """Create or update user profile"""
+    existing_user = UserService.get_user_by_id(db, current_user_id)
+    
+    if existing_user:
+        # Update existing user
+        update_data = UserUpdate(**user_data.dict())
+        user = UserService.update_user(db, current_user_id, update_data)
+    else:
         # Create new user
-        db_user = User(**user_data.dict())
-        db.add(db_user)
-        db.commit()
-        db.refresh(db_user)
-        
-        return SingleUserResponse(
-            data=db_user,
-            message="User created successfully"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create user"
-        )
+        user = UserService.create_user(db, user_data, current_user_id)
+    
+    return user
 
-@router.get("/me", response_model=SingleUserResponse)
-async def get_current_user_profile(
-    current_user: User = Depends(get_current_user)
-):
+@router.get("/profile", response_model=UserResponse)
+def get_profile(current_user: User = Depends(get_current_user)):
     """Get current user's profile"""
-    return SingleUserResponse(
-        data=current_user,
-        message="User profile retrieved successfully"
-    )
+    return current_user
 
-@router.put("/me", response_model=SingleUserResponse)
-async def update_user_profile(
+@router.put("/profile", response_model=UserResponse)
+def update_profile(
     user_data: UserUpdate,
-    current_user: User = Depends(get_current_user),
+    current_user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
     """Update current user's profile"""
-    try:
-        # Update only provided fields
-        update_data = user_data.dict(exclude_unset=True)
-        for field, value in update_data.items():
-            setattr(current_user, field, value)
-        
-        db.commit()
-        db.refresh(current_user)
-        
-        return SingleUserResponse(
-            data=current_user,
-            message="User profile updated successfully"
-        )
-    except Exception as e:
-        db.rollback()
+    print(f"Updating profile for user {current_user_id} with data: {user_data.dict()}")
+    user = UserService.update_user(db, current_user_id, user_data)
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update user profile"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
         )
+    print(f"Updated user: {user.name}, skills_offered: {user.skills_offered}, skills_wanted: {user.skills_wanted}")
+    return user
 
-@router.get("/search", response_model=UserListResponse)
-async def search_users(
-    skill_name: Optional[str] = Query(None, description="Filter by skill name"),
-    location: Optional[str] = Query(None, description="Filter by location"),
-    availability: Optional[str] = Query(None, description="Filter by availability"),
-    limit: int = Query(20, ge=1, le=100, description="Number of results to return"),
-    offset: int = Query(0, ge=0, description="Number of results to skip"),
-    current_user: Optional[User] = Depends(get_current_user_optional),
+@router.get("/search", response_model=List[UserPublicResponse])
+def search_users(
+    skill: str = None,
+    current_user_id: str = Depends(get_current_user_id),
     db: Session = Depends(get_db)
 ):
-    """Search users by various criteria"""
-    try:
-        query = db.query(User).filter(User.is_public == True, User.is_banned == False)
-        
-        # Filter by location
-        if location:
-            query = query.filter(User.location.ilike(f"%{location}%"))
-        
-        # Filter by availability
-        if availability:
-            query = query.filter(User.availability.ilike(f"%{availability}%"))
-        
-        # Filter by skill name
-        if skill_name:
-            query = query.join(UserSkill).join(Skill).filter(
-                Skill.name.ilike(f"%{skill_name}%")
-            )
-        
-        # Apply pagination
-        total = query.count()
-        users = query.offset(offset).limit(limit).all()
-        
-        return UserListResponse(
-            data=users,
-            message=f"Found {len(users)} users",
-            errors=[]
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to search users"
-        )
+    """Search public users by skill or get all public users"""
+    if skill:
+        users = UserService.search_users_by_skill(db, skill)
+    else:
+        # Include all public users (including current user for testing)
+        users = UserService.get_all_public_users(db, exclude_user_id=None)
+    
+    return [UserPublicResponse.from_orm(user) for user in users]
 
-@router.get("/{user_id}", response_model=SingleUserResponse)
-async def get_user_profile(
-    user_id: str,
-    current_user: Optional[User] = Depends(get_current_user_optional),
+@router.get("/debug-token")
+def debug_token(
+    current_user_data: dict = Depends(get_current_user_data)
+):
+    """Debug endpoint to see what's in the JWT token"""
+    return {
+        "message": "JWT token data",
+        "data": current_user_data
+    }
+
+@router.post("/sync-from-clerk", response_model=UserResponse)
+def sync_user_from_clerk(
+    current_user_id: str = Depends(get_current_user_id),
+    current_user_data: dict = Depends(get_current_user_data),
     db: Session = Depends(get_db)
 ):
-    """Get a specific user's profile"""
-    try:
-        user = db.query(User).filter(User.clerk_user_id == user_id).first()
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        # Check if user is public or if current user is requesting their own profile
-        if not user.is_public and (not current_user or current_user.clerk_user_id != user_id):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="User profile is private"
-            )
-        
-        # Check if user is banned
-        if user.is_banned:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="User not found"
-            )
-        
-        return SingleUserResponse(
-            data=user,
-            message="User profile retrieved successfully"
-        )
-    except HTTPException:
-        raise
-    except Exception as e:
+    """Sync user data from Clerk profile"""
+    if not current_user_id:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve user profile"
-        ) 
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid user ID"
+        )
+    
+    print(f"Syncing user {current_user_id} with data: {current_user_data}")
+    
+    # Get user data from the JWT token
+    user = UserService.get_user_by_id(db, current_user_id)
+    if not user:
+        # Create user if they don't exist using data from JWT token
+        # Extract name from token data
+        first_name = current_user_data.get('first_name', '')
+        last_name = current_user_data.get('last_name', '')
+        full_name = current_user_data.get('full_name', '')
+        
+        # Determine the name to use
+        if first_name and last_name:
+            name = f"{first_name} {last_name}"
+        elif first_name:
+            name = first_name
+        elif full_name:
+            name = full_name
+        else:
+            name = current_user_data.get('username', 'User')
+        
+        # Extract email from token data
+        email = ''
+        if current_user_data.get('email_addresses'):
+            email = current_user_data['email_addresses'][0].get('email_address', '')
+        
+        user_data = UserCreate(
+            name=name,
+            email=email or f"{current_user_id}@example.com",
+            location="",
+            skills_offered=[],
+            skills_wanted=[],
+            availability="",
+            is_public=True
+        )
+        user = UserService.create_user(db, user_data, current_user_id)
+        print(f"Created new user: {user.name} ({user.email})")
+    else:
+        # Update existing user with Clerk data if available
+        print(f"Found existing user: {user.name} ({user.email})")
+        
+        # Only update if we have new data from Clerk
+        if current_user_data.get('first_name') or current_user_data.get('last_name') or current_user_data.get('full_name'):
+            first_name = current_user_data.get('first_name', '')
+            last_name = current_user_data.get('last_name', '')
+            full_name = current_user_data.get('full_name', '')
+            
+            # Determine the name to use
+            if first_name and last_name:
+                name = f"{first_name} {last_name}"
+            elif first_name:
+                name = first_name
+            elif full_name:
+                name = full_name
+            else:
+                name = current_user_data.get('username', user.name)
+            
+            # Extract email from token data
+            email = ''
+            if current_user_data.get('email_addresses'):
+                email = current_user_data['email_addresses'][0].get('email_address', '')
+            
+            if name != user.name and user:
+                update_data = UserUpdate(name=name)
+                updated_user = UserService.update_user(db, current_user_id, update_data)
+                if updated_user:
+                    print(f"Updated user: {updated_user.name} ({updated_user.email})")
+                    user = updated_user
+    
+    return user
