@@ -12,6 +12,7 @@ import { Edit, Save } from 'lucide-react';
 import { ProfilePhoto } from '@/components/ProfilePhoto';
 import { SkillsSection } from '@/components/SkillsSection';
 import { ProfileForm } from '@/components/ProfileForm';
+import { ContactInfoForm } from '@/components/ContactInfoForm';
 
 export const Profile = () => {
   const { user: clerkUser } = useUser();
@@ -43,6 +44,7 @@ export const Profile = () => {
           // Transform backend data (snake_case) to frontend format (camelCase)
           const transformedProfile = {
             ...profile,
+            phoneNumber: profile.phone_number,
             skillsOffered: profile.skills_offered || [],
             skillsWanted: profile.skills_wanted || [],
             isPublic: profile.is_public
@@ -65,6 +67,7 @@ export const Profile = () => {
           // Transform backend data (snake_case) to frontend format (camelCase)
           const transformedUser = {
             ...syncedUser,
+            phoneNumber: syncedUser.phone_number,
             skillsOffered: syncedUser.skills_offered || [],
             skillsWanted: syncedUser.skills_wanted || [],
             isPublic: syncedUser.is_public
@@ -195,6 +198,28 @@ export const Profile = () => {
             formData={formData}
             setFormData={setFormData}
             isEditing={isEditing}
+          />
+
+          <ContactInfoForm
+            currentEmail={user?.email}
+            currentPhone={user?.phoneNumber}
+            onUpdate={() => {
+              // Reload user profile to get updated contact info
+              if (getToken) {
+                getToken().then(token => {
+                  userApi.getProfile(token).then((profile: any) => {
+                    const transformedProfile = {
+                      ...profile,
+                      phoneNumber: profile.phone_number,
+                      skillsOffered: profile.skills_offered || [],
+                      skillsWanted: profile.skills_wanted || [],
+                      isPublic: profile.is_public
+                    };
+                    setUser(transformedProfile);
+                  });
+                });
+              }
+            }}
           />
 
           <SkillsSection

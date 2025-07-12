@@ -94,6 +94,31 @@ def debug_token(
         "data": current_user_data
     }
 
+@router.get("/debug-profile")
+def debug_profile(
+    current_user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db)
+):
+    """Debug endpoint to see current user's profile data"""
+    user = UserService.get_user_by_id(db, current_user_id)
+    if not user:
+        return {"error": "User not found"}
+    
+    return {
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "phone_number": user.phone_number,
+        "location": user.location,
+        "skills_offered": user.skills_offered,
+        "skills_wanted": user.skills_wanted,
+        "availability": user.availability,
+        "is_public": user.is_public,
+        "is_active": user.is_active,
+        "is_banned": user.is_banned,
+        "created_at": user.created_at.isoformat() if user.created_at else None
+    }
+
 @router.post("/sync-from-clerk", response_model=UserResponse)
 def sync_user_from_clerk(
     current_user_id: str = Depends(get_current_user_id),
@@ -109,71 +134,7 @@ def sync_user_from_clerk(
     
     print(f"Syncing user {current_user_id} with data: {current_user_data}")
     
-    # Get user data from the JWT token
-    user = UserService.get_user_by_id(db, current_user_id)
-    if not user:
-        # Create user if they don't exist using data from JWT token
-        # Extract name from token data
-        first_name = current_user_data.get('first_name', '')
-        last_name = current_user_data.get('last_name', '')
-        full_name = current_user_data.get('full_name', '')
-        
-        # Determine the name to use
-        if first_name and last_name:
-            name = f"{first_name} {last_name}"
-        elif first_name:
-            name = first_name
-        elif full_name:
-            name = full_name
-        else:
-            name = current_user_data.get('username', 'User')
-        
-        # Extract email from token data
-        email = ''
-        if current_user_data.get('email_addresses'):
-            email = current_user_data['email_addresses'][0].get('email_address', '')
-        
-        user_data = UserCreate(
-            name=name,
-            email=email or f"{current_user_id}@example.com",
-            location="",
-            skills_offered=[],
-            skills_wanted=[],
-            availability="",
-            is_public=True
-        )
-        user = UserService.create_user(db, user_data, current_user_id)
-        print(f"Created new user: {user.name} ({user.email})")
-    else:
-        # Update existing user with Clerk data if available
-        print(f"Found existing user: {user.name} ({user.email})")
-        
-        # Only update if we have new data from Clerk
-        if current_user_data.get('first_name') or current_user_data.get('last_name') or current_user_data.get('full_name'):
-            first_name = current_user_data.get('first_name', '')
-            last_name = current_user_data.get('last_name', '')
-            full_name = current_user_data.get('full_name', '')
-            
-            # Determine the name to use
-            if first_name and last_name:
-                name = f"{first_name} {last_name}"
-            elif first_name:
-                name = first_name
-            elif full_name:
-                name = full_name
-            else:
-                name = current_user_data.get('username', user.name)
-            
-            # Extract email from token data
-            email = ''
-            if current_user_data.get('email_addresses'):
-                email = current_user_data['email_addresses'][0].get('email_address', '')
-            
-            if name != user.name and user:
-                update_data = UserUpdate(name=name)
-                updated_user = UserService.update_user(db, current_user_id, update_data)
-                if updated_user:
-                    print(f"Updated user: {updated_user.name} ({updated_user.email})")
-                    user = updated_user
+    # Use the service method to sync user data from Clerk
+    user = UserService.sync_user_from_clerk(db, current_user_data, current_user_id)
     
     return user

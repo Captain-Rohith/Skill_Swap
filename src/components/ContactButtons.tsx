@@ -8,6 +8,10 @@ interface ContactButtonsProps {
 }
 
 export const ContactButtons = ({ user, className = '' }: ContactButtonsProps) => {
+  console.log('ContactButtons: User data:', user);
+  console.log('ContactButtons: Phone number:', user.phoneNumber);
+  console.log('ContactButtons: Email:', user.email);
+  
   const handleCall = () => {
     if (user.phoneNumber) {
       window.open(`tel:${user.phoneNumber}`, '_self');
@@ -31,8 +35,10 @@ export const ContactButtons = ({ user, className = '' }: ContactButtonsProps) =>
     }
   };
 
-  const hasPhone = user.phoneNumber && user.phoneNumber.trim() !== '';
-  const hasEmail = user.email && user.email.trim() !== '';
+  const hasPhone = user.phoneNumber && user.phoneNumber !== null && user.phoneNumber !== undefined && user.phoneNumber.trim() !== '' && user.phoneNumber !== 'null' && user.phoneNumber !== 'undefined';
+  const hasEmail = user.email && user.email !== null && user.email !== undefined && user.email.trim() !== '' && user.email !== 'null' && user.email !== 'undefined';
+  
+  console.log('ContactButtons: hasPhone:', hasPhone, 'hasEmail:', hasEmail);
 
   if (!hasPhone && !hasEmail) {
     return (

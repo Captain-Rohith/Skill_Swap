@@ -83,6 +83,7 @@ class UserService:
                 "id": user.id,
                 "name": user.name,
                 "email": user.email,
+                "phone_number": user.phone_number,
                 "location": user.location,
                 "profile_picture": user.profile_picture,
                 "skills_offered": user.skills_offered,
@@ -139,8 +140,16 @@ class UserService:
             email = clerk_user_data['email_addresses'][0].get('email_address', '')
         
         phone_number = ''
-        if clerk_user_data.get('phone_numbers'):
+        print(f"DEBUG: Clerk user data keys: {list(clerk_user_data.keys())}")
+        print(f"DEBUG: Phone numbers data: {clerk_user_data.get('phone_numbers')}")
+        print(f"DEBUG: Primary phone number: {clerk_user_data.get('primary_phone_number')}")
+        
+        if clerk_user_data.get('phone_numbers') and len(clerk_user_data['phone_numbers']) > 0:
             phone_number = clerk_user_data['phone_numbers'][0].get('phone_number', '')
+        elif clerk_user_data.get('primary_phone_number'):
+            phone_number = clerk_user_data['primary_phone_number'].get('phone_number', '')
+        
+        print(f"DEBUG: Extracted phone number: {phone_number}")
         
         if existing_user:
             # Update existing user with latest Clerk data
